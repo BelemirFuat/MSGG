@@ -94,8 +94,8 @@
             Label titleLabel = new Label();
             titleLabel.Text = "Kişi " + contactId;
             titleLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
-            titleLabel.Font = new Font("Arial", 14, FontStyle.Bold);
-
+            titleLabel.Font = new Font("Arial", 26, FontStyle.Bold);
+            titleLabel.AutoSize = true;
             titleLabel.Location = new Point(10, 10);
             titleLabel.Width = messagePanel.Width - 40; // Panel genişliğine göre ayar
             titleLabel.Padding = new Padding(15);
@@ -105,7 +105,7 @@
             // Mesajları ekleyelim (örnek veriler)
             FlowLayoutPanel messagesFlowPanel = new FlowLayoutPanel();
 
-            messagesFlowPanel.Location = new Point(10, 50);
+            messagesFlowPanel.Location = new Point(10 , 35 + titleLabel.Height);
             messagesFlowPanel.Width = messagePanel.Width - 40; // Panel genişliğine göre ayar
             messagesFlowPanel.Height = messagePanel.Height - 100; // Başlık ve alt boşluk için ayar
 

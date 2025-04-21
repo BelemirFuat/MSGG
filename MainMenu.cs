@@ -13,11 +13,17 @@
         Panel panelChat = new Panel();
         Panel messagePanel = new Panel();
         FlowLayoutPanel flowPanelContacts = new FlowLayoutPanel();
+        FlowLayoutPanel messagesFlowPanel = new FlowLayoutPanel();
+
 
         TextBox searchBox = new TextBox();
         TextBox messageInput = new TextBox();
 
         Button sendButton = new Button();
+
+        // variable definitions
+        private int? activeContactId = null;
+
 
         public MainMenu()
         {
@@ -52,6 +58,14 @@
             messageInput.BorderStyle = BorderStyle.FixedSingle;
             messageInput.PlaceholderText = "Mesajınızı yazın..."; // Placeholder text
             panelChat.Controls.Add(messageInput);
+            messageInput.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    sendButton.PerformClick();
+                    e.SuppressKeyPress = true; // "ding" sesini engeller
+                }
+            };
 
             sendButton.Text = "Gönder";
             sendButton.Width = 100;
@@ -65,30 +79,7 @@
 
             sendButton.Click += (s, e) =>
             {
-                string newMessage = messageInput.Text.Trim();
-                if (!string.IsNullOrEmpty(newMessage))
-                {
-                    // Yeni mesajı oluştur ve panelin en sonuna ekle
-                    Label sentMessage = new Label();
-                    sentMessage.Text = "Sen: " + newMessage;
-                    sentMessage.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
-                    sentMessage.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
-                    sentMessage.Font = new Font("Arial", 14);
-                    sentMessage.Width = messagePanel.Width - 40;
-                    sentMessage.Margin = new Padding(10);
-
-                    // messagePanel içindeki FlowLayoutPanel'i bul ve mesajı ekle
-                    foreach (Control ctrl in messagePanel.Controls)
-                    {
-                        if (ctrl is FlowLayoutPanel flow)
-                        {
-                            flow.Controls.Add(sentMessage);
-                            break;
-                        }
-                    }
-
-                    messageInput.Text = ""; // Kutuyu temizle
-                }
+                sendMessage();
             };
 
             //flowPanelContacts.Dock = DockStyle.Fill;
@@ -134,8 +125,10 @@
                 contactButton.Click += (s, ev) =>
                 {
                     Button clickedButton = s as Button; // veya (Button)s
+
                     if (clickedButton != null && clickedButton.Tag is int contactId)
                     {
+                        activeContactId = contactId;
                         LoadMessages(contactId, messagePanel);
                     }
                 };
@@ -146,6 +139,7 @@
         {
             // Mesaj panelini temizleyelim
             messagePanel.Controls.Clear();
+            messagesFlowPanel.Controls.Clear();
 
             // Başlık çubuğu ekleyelim (Kişi ismiyle)
             Label titleLabel = new Label();
@@ -160,7 +154,6 @@
             messagePanel.Controls.Add(titleLabel);
 
             // Mesajları ekleyelim (örnek veriler)
-            FlowLayoutPanel messagesFlowPanel = new FlowLayoutPanel();
 
             messagesFlowPanel.Location = new Point(0, titleLabel.Height);
             messagesFlowPanel.Width = messagePanel.Width; // Panel genişliğine göre ayar
@@ -171,18 +164,69 @@
 
             // Örnek mesajlar (her bir mesaj bir Label olarak eklenebilir)
             // TODO : alan kim gönderen kim belirtilmeli
-            for (int i = 0; i < 100; i++) // 10 mesaj örneği
+            for (int i = 0; i < 10; i++)
             {
-                Label messageLabel = new Label();
-                messageLabel.Text = "Kişi " + contactId + " ile mesaj " + (i + 1);
-                messageLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
-                messageLabel.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
-                messageLabel.Font = new Font("Arial", 14);
-
-                messageLabel.Width = messagePanel.Width - 40;
-                messageLabel.Margin = new Padding(10);
-                messagesFlowPanel.Controls.Add(messageLabel);
+                bool isSentByMe = i % 2 == 0; // Örnek olarak yarısı bizden
+                string text = isSentByMe ? $"Sen: Merhaba {i}" : $"Kişi {contactId}: Selam {i}";
+                Panel bubble = CreateMessageBubble(text, isSentByMe);
+                messagesFlowPanel.Controls.Add(bubble);
             }
         }
+
+        public void sendMessage()
+        {
+            // TODO : mesaj gönderme işlemi
+            if (activeContactId == null)
+            {
+                MessageBox.Show("Lütfen önce bir kişi seçin.", "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string newMessage = messageInput.Text.Trim();
+            if (!string.IsNullOrEmpty(newMessage))
+            {
+                // Yeni mesajı oluştur ve panelin en sonuna ekle
+                Label sentMessage = new Label();
+                Panel messageBubble = CreateMessageBubble("Sen: " + newMessage, true);
+                messagesFlowPanel.Controls.Add(messageBubble);
+                messageInput.Text = ""; // Kutuyu temizle
+            }
+        }
+
+        private Panel CreateMessageBubble(string text, bool isSentByMe)
+        {
+            Panel bubble = new Panel();
+            Label messageLabel = new Label();
+
+            messageLabel.Text = text;
+            messageLabel.AutoSize = true;
+            messageLabel.MaximumSize = new Size(400, 0); // Uzun mesajlar için satır kaydırma
+            messageLabel.Font = new Font("Arial", 14);
+            messageLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
+            messageLabel.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+            messageLabel.Padding = new Padding(10);
+            messageLabel.Margin = new Padding(0);
+
+            bubble.AutoSize = true;
+            bubble.Padding = new Padding(0);
+            bubble.Margin = new Padding(10);
+            bubble.BackColor = Color.Transparent;
+
+            // Yön belirleme
+            if (isSentByMe)
+            {
+                bubble.Dock = DockStyle.Right;
+                messageLabel.TextAlign = ContentAlignment.MiddleRight;
+            }
+            else
+            {
+                bubble.Dock = DockStyle.Left;
+                messageLabel.TextAlign = ContentAlignment.MiddleLeft;
+            }
+
+            bubble.Controls.Add(messageLabel);
+            return bubble;
+        }
+
     }
 }

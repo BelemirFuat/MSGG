@@ -11,12 +11,14 @@
         // element definitions
         Panel panelContacts = new Panel();
         Panel panelChat = new Panel();
+        Panel messagePanel = new Panel();
+        FlowLayoutPanel flowPanelContacts = new FlowLayoutPanel();
 
         TextBox searchBox = new TextBox();
+        TextBox messageInput = new TextBox();
 
-        Panel messagePanel = new Panel();
+        Button sendButton = new Button();
 
-        FlowLayoutPanel flowPanelContacts = new FlowLayoutPanel();
         public MainMenu()
         {
             InitializeComponent();
@@ -30,7 +32,6 @@
             this.Size = new Size(1000, 600);
 
             panelContacts.Size = new Size(250, this.Height);
-
             panelContacts.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor); 
             this.Controls.Add(panelContacts);
 
@@ -41,27 +42,83 @@
             panelChat.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             this.Controls.Add(panelChat);
 
+            messageInput.Name = "messageInput";
+            messageInput.Width = panelChat.Width - 130;
+            messageInput.Height = 30;
+            messageInput.Location = new Point(10, panelChat.Height - 60);
+            messageInput.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+            messageInput.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
+            messageInput.Font = new Font("Arial", 14);
+            messageInput.BorderStyle = BorderStyle.FixedSingle;
+            messageInput.PlaceholderText = "Mesajınızı yazın..."; // Placeholder text
+            panelChat.Controls.Add(messageInput);
 
+            sendButton.Text = "Gönder";
+            sendButton.Width = 100;
+            sendButton.Height = 30;
+            sendButton.Font = new Font("Arial", 12, FontStyle.Bold);
+            sendButton.Location = new Point(messageInput.Right + 10, messageInput.Top);
+            sendButton.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+            sendButton.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
+            sendButton.FlatStyle = FlatStyle.Flat;
+            panelChat.Controls.Add(sendButton);
 
-            flowPanelContacts.Dock = DockStyle.Fill;
+            sendButton.Click += (s, e) =>
+            {
+                string newMessage = messageInput.Text.Trim();
+                if (!string.IsNullOrEmpty(newMessage))
+                {
+                    // Yeni mesajı oluştur ve panelin en sonuna ekle
+                    Label sentMessage = new Label();
+                    sentMessage.Text = "Sen: " + newMessage;
+                    sentMessage.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
+                    sentMessage.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+                    sentMessage.Font = new Font("Arial", 14);
+                    sentMessage.Width = messagePanel.Width - 40;
+                    sentMessage.Margin = new Padding(10);
+
+                    // messagePanel içindeki FlowLayoutPanel'i bul ve mesajı ekle
+                    foreach (Control ctrl in messagePanel.Controls)
+                    {
+                        if (ctrl is FlowLayoutPanel flow)
+                        {
+                            flow.Controls.Add(sentMessage);
+                            break;
+                        }
+                    }
+
+                    messageInput.Text = ""; // Kutuyu temizle
+                }
+            };
+
+            //flowPanelContacts.Dock = DockStyle.Fill;
+            flowPanelContacts.Location = new Point(10, 10);
+            flowPanelContacts.Width = panelContacts.Width - 20; // Panel genişliğine göre ayar
+            flowPanelContacts.Height = panelContacts.Height - 60; // Panel yüksekliğine göre ayar
             flowPanelContacts.AutoScroll = true;  // Kaydırma çubuğu eklemek için
             flowPanelContacts.Padding = new Padding(10);
             panelContacts.Controls.Add(flowPanelContacts);
 
             searchBox.Width = panelContacts.Width - 35;
             searchBox.Location = new Point(10, 10);
+            searchBox.Margin = new Padding(0, 5, 0, 5);  // Her buton arasında boşluk
+
             searchBox.ForeColor = ColorTranslator.FromHtml(LavenderTextColor); 
             searchBox.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             searchBox.BorderStyle = BorderStyle.FixedSingle;
             searchBox.PlaceholderText = "Ara...";
             flowPanelContacts.Controls.Add(searchBox);
 
-            messagePanel.Dock = DockStyle.Fill;
+            // messagePanel.Dock = DockStyle.Fill;
+            messagePanel.Location = new Point(10, 10);
+            messagePanel.Width = panelChat.Width - 20; // Panel genişliğine göre ayar
+            messagePanel.Height = panelChat.Height - sendButton.Height - 60; // Panel yüksekliğine göre ayar
             messagePanel.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             panelChat.Controls.Add(messagePanel);
 
 
-            //örnek kişi listesi. kişi listesi çekme özelliği gelince burası değişecek
+            //örnek kişi listesi.
+            //TODO : kişi listesi çekme özelliği gelince burası değişecek
             for (int i = 0; i < 100; i++) // 10 kişi örneği
             {
                 Button contactButton = new Button();
@@ -92,7 +149,7 @@
 
             // Başlık çubuğu ekleyelim (Kişi ismiyle)
             Label titleLabel = new Label();
-            titleLabel.Text = "Kişi " + contactId;
+            titleLabel.Text = "Kişi " + contactId; //TODO : kişi ismi çekilecek
             titleLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
             titleLabel.Font = new Font("Arial", 26, FontStyle.Bold);
             titleLabel.AutoSize = true;
@@ -105,20 +162,23 @@
             // Mesajları ekleyelim (örnek veriler)
             FlowLayoutPanel messagesFlowPanel = new FlowLayoutPanel();
 
-            messagesFlowPanel.Location = new Point(10 , 35 + titleLabel.Height);
-            messagesFlowPanel.Width = messagePanel.Width - 40; // Panel genişliğine göre ayar
-            messagesFlowPanel.Height = messagePanel.Height - 100; // Başlık ve alt boşluk için ayar
+            messagesFlowPanel.Location = new Point(0, titleLabel.Height);
+            messagesFlowPanel.Width = messagePanel.Width; // Panel genişliğine göre ayar
+            messagesFlowPanel.Height = messagePanel.Height -60 ; // Başlık ve alt boşluk için ayar
 
             messagesFlowPanel.AutoScroll = true;
             messagePanel.Controls.Add(messagesFlowPanel);
 
             // Örnek mesajlar (her bir mesaj bir Label olarak eklenebilir)
+            // TODO : alan kim gönderen kim belirtilmeli
             for (int i = 0; i < 100; i++) // 10 mesaj örneği
             {
                 Label messageLabel = new Label();
                 messageLabel.Text = "Kişi " + contactId + " ile mesaj " + (i + 1);
                 messageLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
                 messageLabel.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+                messageLabel.Font = new Font("Arial", 14);
+
                 messageLabel.Width = messagePanel.Width - 40;
                 messageLabel.Margin = new Padding(10);
                 messagesFlowPanel.Controls.Add(messageLabel);

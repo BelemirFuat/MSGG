@@ -1,5 +1,7 @@
 ﻿using System.Data.SQLite;
 
+
+
 namespace MSGG
 {
     public partial class MainMenu : Form
@@ -25,10 +27,12 @@ namespace MSGG
 
         Button sendButton = new Button();
         Button btnAddContact = new Button();
+
         // variable definitions
         private int? activeContactId = null;
         string contactsDbPath = "Data Source="+ Path.Combine(Application.StartupPath, "cntcs.db");
         string messagesDbPath = "Data Source="+ Path.Combine(Application.StartupPath, "msg.db");
+        private int myId = 0;
 
 
 
@@ -39,6 +43,8 @@ namespace MSGG
 
         private void MainMenu_Load(object sender, EventArgs e)
         {
+            pullFromFireBase();
+            checkMyData();
             this.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             //this.FormBorderStyle = FormBorderStyle.None; 
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -90,42 +96,39 @@ namespace MSGG
             };
 
 
-            flowPanelContacts.Location = new Point(10, 10);
+            flowPanelContacts.Location = new Point(10, 10 + 30);
             flowPanelContacts.Width = panelContacts.Width - 20; 
-            flowPanelContacts.Height = panelContacts.Height - 60;
+            flowPanelContacts.Height = panelContacts.Height - 60 -25 ;
             flowPanelContacts.AutoScroll = true;  
             flowPanelContacts.Padding = new Padding(10);
             panelContacts.Controls.Add(flowPanelContacts);
 
             searchBox.Width = flowPanelContacts.Width - 35 - 30 ;
-            searchBox.Location = new Point(10, 10);
+            searchBox.Location = new Point(20, 10);
             searchBox.Margin = new Padding(0, 5, 0, 5); 
             searchBox.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
             searchBox.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             searchBox.BorderStyle = BorderStyle.FixedSingle;
-            searchBox.Font = new Font("Arial", 12);
+            searchBox.Font = new Font("Segoi UI", 12);
             searchBox.PlaceholderText = "Ara...";
-            flowPanelContacts.Controls.Add(searchBox);
+            panelContacts.Controls.Add(searchBox);
 
             btnAddContact = new Button
             {
                 Text = "+",
-                Width = 30,
-                Height = 30,
+                Width = 25,
+                Height = 25,
                 Location = new Point(searchBox.Right + 10, searchBox.Top),
-                FlatStyle = FlatStyle.Flat,
                 BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor),
-                ForeColor = ColorTranslator.FromHtml(LavenderTextColor)
+                ForeColor = ColorTranslator.FromHtml(LavenderTextColor),
+                FlatStyle = FlatStyle.Flat,
+                Margin = new Padding(5, 5, 0, 5)
 
             };
-            btnAddContact.Click += (s, e) =>
-            {
-                addContactPanel.Visible = true;
-                addContactPanel.Location = new Point(this.Width/2-addContactPanel.Width / 2, this.Height / 2 - addContactPanel.Height / 2);
-            };
-            flowPanelContacts.Controls.Add(btnAddContact);
+            btnAddContact.Click += btnAddContact_Click;
 
-           
+            panelContacts.Controls.Add(btnAddContact);
+
             messagePanel.Location = new Point(10, 10);
             messagePanel.Width = panelChat.Width - 20; 
             messagePanel.Height = panelChat.Height - sendButton.Height - 60; 
@@ -143,86 +146,85 @@ namespace MSGG
                 BackColor = Color.Transparent,
             };
 
-            addContactPanel = new Panel
-            {
-                Size = new Size(250, 150),
-                BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor),
-                Location = new Point(this.Width,this.Height),
-                Visible = false
-            };
-
-            Label lblName = new Label { Text = "İsim:", Location = new Point(10, 10) };
-            TextBox txtName = new TextBox { Location = new Point(70, 10), Width = 150 };
-
-            Label lblId = new Label { Text = "ID:", Location = new Point(10, 40) };
-            TextBox txtId = new TextBox { Location = new Point(70, 40), Width = 150 };
-
-            Button btnSave = new Button { Text = "Kaydet", Location = new Point(30, 80), Width = 80 };
-            Button btnCancel = new Button { Text = "İptal", Location = new Point(130, 80), Width = 80 };
-
-            // Kaydet
-            btnSave.Click += (s, e) =>
-            {
-                if (int.TryParse(txtId.Text, out int id))
-                {
-                    AddContact(txtName.Text.Trim(), id);
-                    txtName.Clear();
-                    txtId.Clear();
-                    addContactPanel.Visible = false;
-                    addContactPanel.Location = new Point(this.Width, this.Height);
-                }
-                else
-                {
-                    MessageBox.Show("ID geçerli bir sayı olmalı.", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            };
-
-            // İptal
-            btnCancel.Click += (s, e) =>
-            {
-                txtName.Clear();
-                txtId.Clear();
-                addContactPanel.Visible = false;
-                addContactPanel.Location = new Point(this.Width, this.Height);
-
-            };
-
-            // Panel'e elemanları ekle
-            addContactPanel.Controls.Add(lblName);
-            addContactPanel.Controls.Add(txtName);
-            addContactPanel.Controls.Add(lblId);
-            addContactPanel.Controls.Add(txtId);
-            addContactPanel.Controls.Add(btnSave);
-            addContactPanel.Controls.Add(btnCancel);
-            this.Controls.Add(addContactPanel);
             InitializeContactsDatabase();
             LoadContacts();
         }
-
-        private void AddContact(string name, int id)
+        private void checkMyData()
         {
+            try
+            {
+                // Open a connection to the database
+                using (var conn = new SQLiteConnection(cntcsDbPath))
+                {
+                    conn.Open();
+                    // Query to retrieve your ID from the 'myData' table
+                    string query = "SELECT id FROM myData LIMIT 1"; // Adjust column and table name as necessary
+
+                    using (var cmd = new SQLiteCommand(query, conn))
+                    {
+                        // Execute the query and retrieve the ID
+                        var result = cmd.ExecuteScalar();
+
+                        if (result != null)
+                        {
+                            myId = Convert.ToInt32(result);
+                            Console.WriteLine($"My ID is: {myId}");
+                        }
+                        else
+                        {
+                            giveMeAnId();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) 
+            {
+                MessageBox.Show($"cntcs databasesinde sorun var! : {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void giveMeAnId()
+        {
+
+        }
+
+        private void btnAddContact_Click(object sender, EventArgs e)
+        {
+            addContact addContactForm = new addContact();
+            addContactForm.ContactAdded += AddContactForm_ContactAdded;
+            addContactForm.Show();
+        }
+
+        private void AddContactForm_ContactAdded(object sender, ContactEventArgs e)
+        {
+            // Get new contact data from AddContactForm
+            string newName = e.Name;
+            int newId = e.Id;
+
+            // Save to database
             try
             {
                 using (var conn = new SQLiteConnection(contactsDbPath))
                 {
                     conn.Open();
-                    string insertQuery = "INSERT INTO contacts (name, id) VALUES (@name, @id)";
-                    using (var cmd = new SQLiteCommand(insertQuery, conn))
+                    string insertContactQuery = "INSERT INTO contacts (name, id) VALUES (@name, @id)";
+                    using (var cmd = new SQLiteCommand(insertContactQuery, conn))
                     {
-                        cmd.Parameters.AddWithValue("@name", name);
-                        cmd.Parameters.AddWithValue("@id", id);
+                        cmd.Parameters.AddWithValue("@name", newName);
+                        cmd.Parameters.AddWithValue("@id", newId);
                         cmd.ExecuteNonQuery();
                     }
                 }
 
-                MessageBox.Show("Kişi başarıyla eklendi!", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadContacts(searchBox.Text); // Yeniden yükle
+                // Reload contacts to show the new contact
+                LoadContacts();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Kişi eklenirken bir hata oluştu:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Error adding contact: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
         void InitializeContactsDatabase()
         {
             string cntcsPath = Path.Combine(Application.StartupPath, "cntcs.db");
@@ -242,24 +244,10 @@ namespace MSGG
                 }
             }
         }
-        void AddDummyContact()
-        {
-            string cntcsPath = Path.Combine(Application.StartupPath, "cntcs.db");
-            using (SQLiteConnection conn = new SQLiteConnection($"Data Source={cntcsPath};Version=3;"))
-            {
-                conn.Open();
-                string insertQuery = "INSERT INTO contacts (name, id) VALUES ('Test Kişi', 3)";
-                using (SQLiteCommand cmd = new SQLiteCommand(insertQuery, conn))
-                {
-                    cmd.ExecuteNonQuery();
-                }
-            }
-        }
-
 
         private void LoadContacts(string filter = "")
         {
-            AddDummyContact();
+            flowPanelContacts.Controls.Clear();
             filter = filter.Trim();
             try
             {
@@ -313,34 +301,69 @@ namespace MSGG
             messagePanel.Controls.Clear();
             messagesFlowPanel.Controls.Clear();
 
+            string contactName = "Bilinmeyen";
+
+            // Kişi ismini cntcs veritabanından çek
             try
             {
-                // Başlık çubuğu ekleyelim (Kişi ismiyle)
-                Label titleLabel = new Label();
-                titleLabel.Text = "Kişi " + contactId; //TODO : kişi ismi çekilecek
-                titleLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
-                titleLabel.Font = new Font("Arial", 26, FontStyle.Bold);
-                titleLabel.AutoSize = true;
-                titleLabel.Location = new Point(10, 10);
-                titleLabel.Width = messagePanel.Width - 40; // Panel genişliğine göre ayar
-                titleLabel.Padding = new Padding(15);
-                titleLabel.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
-                messagePanel.Controls.Add(titleLabel);
+                using (SQLiteConnection cntcsConn = new SQLiteConnection("Data Source=cntcs.db"))
+                {
+                    cntcsConn.Open();
+                    string nameQuery = "SELECT name FROM contacts WHERE id = @id";
+                    using (SQLiteCommand cmd = new SQLiteCommand(nameQuery, cntcsConn))
+                    {
+                        cmd.Parameters.AddWithValue("@id", contactId);
+                        object result = cmd.ExecuteScalar();
+                        if (result != null)
+                            contactName = result.ToString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Kişi ismi yüklenirken bir hata oluştu:\n" + ex.Message);
+            }
 
-                using (var conn = new SQLiteConnection(messagesDbPath))
+            Label titleLabel = new Label();
+            titleLabel.Text = contactName;
+            titleLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
+            titleLabel.Font = new Font("Arial", 26, FontStyle.Bold);
+            titleLabel.AutoSize = true;
+            titleLabel.Location = new Point(10, 10);
+            titleLabel.Width = messagePanel.Width - 40;
+            titleLabel.Padding = new Padding(15);
+            titleLabel.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+            messagePanel.Controls.Add(titleLabel);
+
+            messagesFlowPanel.Location = new Point(0, titleLabel.Bottom);
+            messagesFlowPanel.Width = messagePanel.Width;
+            messagesFlowPanel.Height = messagePanel.Height - titleLabel.Height - 20;
+            messagesFlowPanel.AutoScroll = true;
+            messagePanel.Controls.Add(messagesFlowPanel);
+
+            string tableName = $"messages_ID_{contactId}";
+
+            try
+            {
+                using (SQLiteConnection conn = new SQLiteConnection(messagesDbPath))
                 {
                     conn.Open();
-                    string query = "SELECT senderId, messageDate, messageContent FROM message_schema";
-                    using (var cmd = new SQLiteCommand(query, conn))
-                    using (var reader = cmd.ExecuteReader())
+                    string query = $"CREATE TABLE IF NOT EXISTS {tableName} (" +
+                                   "senderId INT, " +
+                                   "messageDate DATETIME, " +
+                                   "messageContent VARCHAR(256))";
+                    new SQLiteCommand(query, conn).ExecuteNonQuery();
+
+                    string selectQuery = $"SELECT * FROM {tableName} ORDER BY messageDate";
+                    using (SQLiteCommand cmd = new SQLiteCommand(selectQuery, conn))
+                    using (SQLiteDataReader reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
                         {
-                            int senderId = Convert.ToInt32(reader["senderId"]);
-                            string content = reader["messageContent"].ToString();
-                            bool isMe = senderId == 0;
-
-                            Panel bubble = CreateMessageBubble(content, isMe);
+                            int senderId = reader.GetInt32(0);
+                            string msg = reader.GetString(2);
+                            bool isSentByMe = senderId == myId;
+                            Panel bubble = CreateMessageBubble(msg, isSentByMe);
                             messagesFlowPanel.Controls.Add(bubble);
                         }
                     }
@@ -348,25 +371,43 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Mesajlar yüklenirken bir hata oluştu:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Mesajlar yüklenirken bir hata oluştu:\n" + ex.Message);
             }
         }
 
+
         public void sendMessage()
         {
-
             if (activeContactId == null) return;
 
             try
-            { 
-
+            {
                 string newMessage = messageInput.Text.Trim();
                 if (!string.IsNullOrEmpty(newMessage))
                 {
                     using (var conn = new SQLiteConnection(messagesDbPath))
                     {
                         conn.Open();
-                        string insertMessage = "INSERT INTO message_schema (senderId, messageDate, messageContent) VALUES (@senderId, @date, @content)";
+
+                        // Dinamik tablo ismi
+                        string tableName = $"messages_ID_{activeContactId}";
+
+                        // Tabloyu yoksa oluştur
+                        string createTableQuery = $@"
+                    CREATE TABLE IF NOT EXISTS {tableName} (
+                        senderId INT,
+                        messageDate DATETIME,
+                        messageContent VARCHAR(256)
+                    )";
+                        using (var createCmd = new SQLiteCommand(createTableQuery, conn))
+                        {
+                            createCmd.ExecuteNonQuery();
+                        }
+
+                        // Mesajı ekle
+                        string insertMessage = $@"
+                    INSERT INTO {tableName} (senderId, messageDate, messageContent) 
+                    VALUES (@senderId, @date, @content)";
                         using (var cmd = new SQLiteCommand(insertMessage, conn))
                         {
                             cmd.Parameters.AddWithValue("@senderId", 0); // 0 = biz
@@ -385,6 +426,7 @@ namespace MSGG
                 MessageBox.Show($"Mesaj gönderilirken bir hata oluştu:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
 
         private Panel CreateMessageBubble(string text, bool isSentByMe)
         {

@@ -27,8 +27,8 @@ namespace MSGG
         Button btnAddContact = new Button();
         // variable definitions
         private int? activeContactId = null;
-        string contactsDbPath = "Data Source=cntcs.db;";
-        string messagesDbPath = "Data Source=msg.db;";
+        string contactsDbPath = "Data Source="+ Path.Combine(Application.StartupPath, "cntcs.db");
+        string messagesDbPath = "Data Source="+ Path.Combine(Application.StartupPath, "msg.db");
 
 
 
@@ -89,21 +89,21 @@ namespace MSGG
                 sendMessage();
             };
 
-            //flowPanelContacts.Dock = DockStyle.Fill;
+
             flowPanelContacts.Location = new Point(10, 10);
-            flowPanelContacts.Width = panelContacts.Width - 20; // Panel genişliğine göre ayar
-            flowPanelContacts.Height = panelContacts.Height - 60; // Panel yüksekliğine göre ayar
-            flowPanelContacts.AutoScroll = true;  // Kaydırma çubuğu eklemek için
+            flowPanelContacts.Width = panelContacts.Width - 20; 
+            flowPanelContacts.Height = panelContacts.Height - 60;
+            flowPanelContacts.AutoScroll = true;  
             flowPanelContacts.Padding = new Padding(10);
             panelContacts.Controls.Add(flowPanelContacts);
 
-            searchBox.Width = panelContacts.Width - 35 - 30 ;
+            searchBox.Width = flowPanelContacts.Width - 35 - 30 ;
             searchBox.Location = new Point(10, 10);
-            searchBox.Margin = new Padding(0, 5, 0, 5);  // Her buton arasında boşluk
-
+            searchBox.Margin = new Padding(0, 5, 0, 5); 
             searchBox.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
             searchBox.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             searchBox.BorderStyle = BorderStyle.FixedSingle;
+            searchBox.Font = new Font("Arial", 12);
             searchBox.PlaceholderText = "Ara...";
             flowPanelContacts.Controls.Add(searchBox);
 
@@ -112,7 +112,11 @@ namespace MSGG
                 Text = "+",
                 Width = 30,
                 Height = 30,
-                Location = new Point(searchBox.Right + 10, searchBox.Top)
+                Location = new Point(searchBox.Right + 10, searchBox.Top),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor),
+                ForeColor = ColorTranslator.FromHtml(LavenderTextColor)
+
             };
             btnAddContact.Click += (s, e) =>
             {
@@ -121,10 +125,10 @@ namespace MSGG
             };
             flowPanelContacts.Controls.Add(btnAddContact);
 
-            // messagePanel.Dock = DockStyle.Fill;
+           
             messagePanel.Location = new Point(10, 10);
-            messagePanel.Width = panelChat.Width - 20; // Panel genişliğine göre ayar
-            messagePanel.Height = panelChat.Height - sendButton.Height - 60; // Panel yüksekliğine göre ayar
+            messagePanel.Width = panelChat.Width - 20; 
+            messagePanel.Height = panelChat.Height - sendButton.Height - 60; 
             messagePanel.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             panelChat.Controls.Add(messagePanel);
 
@@ -238,11 +242,25 @@ namespace MSGG
                 }
             }
         }
+        void AddDummyContact()
+        {
+            string cntcsPath = Path.Combine(Application.StartupPath, "cntcs.db");
+            using (SQLiteConnection conn = new SQLiteConnection($"Data Source={cntcsPath};Version=3;"))
+            {
+                conn.Open();
+                string insertQuery = "INSERT INTO contacts (name, id) VALUES ('Test Kişi', 3)";
+                using (SQLiteCommand cmd = new SQLiteCommand(insertQuery, conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
 
         private void LoadContacts(string filter = "")
         {
-            flowPanelContacts.Controls.Clear();
-
+            AddDummyContact();
+            filter = filter.Trim();
             try
             {
                 using (var conn = new SQLiteConnection(contactsDbPath))

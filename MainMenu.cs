@@ -160,6 +160,8 @@
             messagesFlowPanel.Height = messagePanel.Height -60 ; // Başlık ve alt boşluk için ayar
 
             messagesFlowPanel.AutoScroll = true;
+
+          
             messagePanel.Controls.Add(messagesFlowPanel);
 
             // Örnek mesajlar (her bir mesaj bir Label olarak eklenebilir)

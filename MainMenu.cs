@@ -1,4 +1,7 @@
 ﻿using System.Data.SQLite;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
+using Google.Cloud.Firestore;
 
 
 
@@ -30,21 +33,38 @@ namespace MSGG
 
         // variable definitions
         private int? activeContactId = null;
-        string contactsDbPath = "Data Source="+ Path.Combine(Application.StartupPath, "cntcs.db");
-        string messagesDbPath = "Data Source="+ Path.Combine(Application.StartupPath, "msg.db");
+        string contactsDbPath = "Data Source=" + Path.Combine(Application.StartupPath, "cntcs.db");
+        string messagesDbPath = "Data Source=" + Path.Combine(Application.StartupPath, "msg.db");
         private int myId = 0;
 
-
+        // class definitions
+        private FirebaseHelper firebaseHelper;
+        private IDisposable messageSubscription;
 
         public MainMenu()
         {
             InitializeComponent();
+            firebaseHelper = new FirebaseHelper();
         }
 
-        private void MainMenu_Load(object sender, EventArgs e)
+        private async void MainMenu_Load(object sender, EventArgs e)
         {
             pullFromFireBase();
             checkMyData();
+            InitializeContactsDatabase();
+            InitializeMessagesDatabase();
+
+            await firebaseHelper.UpdateUserLastActiveAsync(myId);
+
+            // Set up a timer to check for online status
+            System.Windows.Forms.Timer onlineStatusTimer = new System.Windows.Forms.Timer();
+            onlineStatusTimer.Interval = 30000; // Check every 30 seconds
+            onlineStatusTimer.Tick += async (s, ev) =>
+            {
+                await CheckContactsOnlineStatus();
+            };
+            onlineStatusTimer.Start();
+
             this.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             //this.FormBorderStyle = FormBorderStyle.None; 
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -97,15 +117,15 @@ namespace MSGG
 
 
             flowPanelContacts.Location = new Point(10, 10 + 30);
-            flowPanelContacts.Width = panelContacts.Width - 20; 
-            flowPanelContacts.Height = panelContacts.Height - 60 -25 ;
-            flowPanelContacts.AutoScroll = true;  
+            flowPanelContacts.Width = panelContacts.Width - 20;
+            flowPanelContacts.Height = panelContacts.Height - 60 - 25;
+            flowPanelContacts.AutoScroll = true;
             flowPanelContacts.Padding = new Padding(10);
             panelContacts.Controls.Add(flowPanelContacts);
 
-            searchBox.Width = flowPanelContacts.Width - 35 - 30 ;
+            searchBox.Width = flowPanelContacts.Width - 35 - 30;
             searchBox.Location = new Point(20, 10);
-            searchBox.Margin = new Padding(0, 5, 0, 5); 
+            searchBox.Margin = new Padding(0, 5, 0, 5);
             searchBox.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
             searchBox.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             searchBox.BorderStyle = BorderStyle.FixedSingle;
@@ -130,8 +150,8 @@ namespace MSGG
             panelContacts.Controls.Add(btnAddContact);
 
             messagePanel.Location = new Point(10, 10);
-            messagePanel.Width = panelChat.Width - 20; 
-            messagePanel.Height = panelChat.Height - sendButton.Height - 60; 
+            messagePanel.Width = panelChat.Width - 20;
+            messagePanel.Height = panelChat.Height - sendButton.Height - 60;
             messagePanel.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             panelChat.Controls.Add(messagePanel);
 
@@ -145,16 +165,173 @@ namespace MSGG
                 Height = messagePanel.Height - 80,
                 BackColor = Color.Transparent,
             };
+            messagePanel.Controls.Add(messagesFlowPanel);
 
-            InitializeContactsDatabase();
             LoadContacts();
         }
+
+        private async Task CheckContactsOnlineStatus()
+        {
+            try
+            {
+                var allUsers = await firebaseHelper.GetAllUsersAsync();
+
+                foreach (Control control in flowPanelContacts.Controls)
+                {
+                    if (control is Button contactButton)
+                    {
+                        int contactId = (int)contactButton.Tag;
+                        var user = allUsers.FirstOrDefault(u => u.Id == contactId);
+
+                        if (user != null)
+                        {
+                            // If user was active in the last 2 minutes, consider them online
+                            bool isOnline = (DateTime.UtcNow - user.LastActive).TotalMinutes < 2;
+
+                            // Update UI to show online status
+                            // For simplicity, just change button color
+                            contactButton.BackColor = isOnline
+                                ? ColorTranslator.FromHtml("#2E7D32")  // Green for online
+                                : ColorTranslator.FromHtml(SecondaryBackgroundColor);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error checking online status: {ex.Message}");
+            }
+        }
+
+        void InitializeMessagesDatabase()
+        {
+            string msgPath = messagesDbPath;
+            using (SQLiteConnection conn = new SQLiteConnection($"Data Source={msgPath};Version=3;"))
+            {
+                conn.Open();
+                // No need to create specific message tables here,
+                // they'll be created when needed in the sendMessage method
+            }
+        }
+
+        private async void pullFromFireBase()
+        {
+            try
+            {
+                // If we have a local ID, make sure our user exists in Firebase
+                if (myId > 0)
+                {
+                    var userName = await firebaseHelper.GetUserNameAsync(myId);
+                    if (string.IsNullOrEmpty(userName))
+                    {
+                        // Our user isn't in Firebase yet, ask for name and save
+                        string name = AskUserName();
+                        await firebaseHelper.SaveUserNameAsync(myId, name);
+                    }
+
+                    // Sync local contacts to cloud
+                    var contacts = GetLocalContacts();
+                    await firebaseHelper.SyncLocalContactsAsync(myId, contacts);
+
+                    // Check for any cloud contacts not in local DB
+                    await SyncCloudContactsToLocal();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Firebase sync error: {ex.Message}");
+                // Continue without Firebase
+            }
+        }
+
+        private List<Contact> GetLocalContacts()
+        {
+            var contacts = new List<Contact>();
+
+            try
+            {
+                using (var conn = new SQLiteConnection(contactsDbPath))
+                {
+                    conn.Open();
+                    string query = "SELECT name, id FROM contacts";
+
+                    using (var cmd = new SQLiteCommand(query, conn))
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            contacts.Add(new Contact
+                            {
+                                Name = reader["name"].ToString(),
+                                Id = Convert.ToInt32(reader["id"])
+                            });
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error retrieving local contacts: {ex.Message}");
+            }
+
+            return contacts;
+        }
+
+        // Method to sync cloud contacts to local DB
+        private async Task SyncCloudContactsToLocal()
+        {
+            try
+            {
+                var cloudContacts = await firebaseHelper.GetContactsAsync(myId);
+                if (cloudContacts == null || cloudContacts.Count == 0)
+                    return;
+
+                using (var conn = new SQLiteConnection(contactsDbPath))
+                {
+                    conn.Open();
+
+                    // Get existing contact IDs
+                    var existingIds = new HashSet<int>();
+                    using (var cmd = new SQLiteCommand("SELECT id FROM contacts", conn))
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            existingIds.Add(Convert.ToInt32(reader["id"]));
+                        }
+                    }
+
+                    // Add any missing contacts
+                    foreach (var contact in cloudContacts)
+                    {
+                        if (!existingIds.Contains(contact.Id))
+                        {
+                            string insertQuery = "INSERT INTO contacts (name, id) VALUES (@name, @id)";
+                            using (var cmd = new SQLiteCommand(insertQuery, conn))
+                            {
+                                cmd.Parameters.AddWithValue("@name", contact.Name);
+                                cmd.Parameters.AddWithValue("@id", contact.Id);
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+                    }
+                }
+
+                // Refresh contacts display
+                LoadContacts();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error syncing cloud contacts: {ex.Message}");
+            }
+        }
+
         private void checkMyData()
         {
             try
             {
                 // Open a connection to the database
-                using (var conn = new SQLiteConnection(cntcsDbPath))
+                using (var conn = new SQLiteConnection(contactsDbPath))
                 {
                     conn.Open();
                     // Query to retrieve your ID from the 'myData' table
@@ -177,15 +354,83 @@ namespace MSGG
                     }
                 }
             }
-            catch (Exception ex) 
+            catch (Exception ex)
             {
                 MessageBox.Show($"cntcs databasesinde sorun var! : {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void giveMeAnId()
+        private async void giveMeAnId()
         {
+            try
+            {
+                int newUserId = await GetNewUserIdAsync();
 
+                // Save to SQLite
+                using (var conn = new SQLiteConnection(contactsDbPath))
+                {
+                    conn.Open();
+                    string insertQuery = "INSERT INTO myData (id) VALUES (@id)";
+                    using (var cmd = new SQLiteCommand(insertQuery, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@id", newUserId);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                myId = newUserId; // Assign to your variable
+                await RegisterUserAsync(AskUserName(), newUserId); // Or use a real name if you have one
+                MessageBox.Show($"Yeni ID alındı: {newUserId}", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Yeni ID alınırken hata oluştu:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private string AskUserName()
+        {
+            string input = Microsoft.VisualBasic.Interaction.InputBox(
+                "Lütfen bir kullanıcı adı girin:",
+                "Kullanıcı Adı",
+                "Yeni Kullanıcı"
+            );
+            return input.Trim();
+        }
+
+        public async Task<int> GetNewUserIdAsync()
+        {
+            FirestoreDb db = FirestoreDb.Create("your-project-id");
+            CollectionReference usersRef = db.Collection("users");
+
+            QuerySnapshot snapshot = await usersRef.GetSnapshotAsync();
+            HashSet<int> usedIds = new HashSet<int>();
+
+            foreach (DocumentSnapshot doc in snapshot.Documents)
+            {
+                if (int.TryParse(doc.Id, out int userId))
+                    usedIds.Add(userId);
+            }
+
+            int newId = 1;
+            while (usedIds.Contains(newId))
+            {
+                newId++;
+            }
+
+            return newId;
+        }
+        public async Task RegisterUserAsync(string userName, int userId)
+        {
+            DocumentReference docRef = FirestoreDb.Create("your-project-id").Collection("users").Document(userId.ToString());
+
+            Dictionary<string, object> data = new Dictionary<string, object>
+            {
+                { "name", userName },
+                { "createdAt", Timestamp.GetCurrentTimestamp() }
+            };
+
+            await docRef.SetAsync(data);
         }
 
         private void btnAddContact_Click(object sender, EventArgs e)
@@ -255,7 +500,7 @@ namespace MSGG
                 {
                     conn.Open();
                     string query = "";
-                    if(filter == "")
+                    if (filter == "")
                     {
                         query = "SELECT name, id FROM contacts";
                     }
@@ -301,12 +546,14 @@ namespace MSGG
             messagePanel.Controls.Clear();
             messagesFlowPanel.Controls.Clear();
 
+            messageSubscription?.Dispose();
+
             string contactName = "Bilinmeyen";
 
             // Kişi ismini cntcs veritabanından çek
             try
             {
-                using (SQLiteConnection cntcsConn = new SQLiteConnection("Data Source=cntcs.db"))
+                using (SQLiteConnection cntcsConn = new SQLiteConnection(contactsDbPath))
                 {
                     cntcsConn.Open();
                     string nameQuery = "SELECT name FROM contacts WHERE id = @id";
@@ -373,10 +620,71 @@ namespace MSGG
             {
                 MessageBox.Show("Mesajlar yüklenirken bir hata oluştu:\n" + ex.Message);
             }
+
+            messageSubscription = firebaseHelper.SubscribeToMessages(myId, contactId, newMessage =>
+            {
+                // This runs when we receive a new message from Firebase
+                this.Invoke((MethodInvoker)delegate
+                {
+                    // Only add message if it's not from us (to avoid duplicates)
+                    if (newMessage.SenderId != myId)
+                    {
+                        // Save to local database
+                        SaveMessageToLocal(contactId, newMessage);
+
+                        // Add to UI
+                        bool isSentByMe = newMessage.SenderId == myId;
+                        Panel bubble = CreateMessageBubble(newMessage.Content, isSentByMe);
+                        messagesFlowPanel.Controls.Add(bubble);
+
+                        // Scroll to bottom
+                        messagesFlowPanel.ScrollControlIntoView(bubble);
+                    }
+                });
+            });
         }
 
+        private void SaveMessageToLocal(int contactId, Message message)
+        {
+            try
+            {
+                using (var conn = new SQLiteConnection(messagesDbPath))
+                {
+                    conn.Open();
+                    string tableName = $"messages_ID_{contactId}";
 
-        public void sendMessage()
+                    // Create table if it doesn't exist
+                    string createTableQuery = $@"
+                CREATE TABLE IF NOT EXISTS {tableName} (
+                    senderId INT,
+                    messageDate DATETIME,
+                    messageContent VARCHAR(256)
+                )";
+                    using (var createCmd = new SQLiteCommand(createTableQuery, conn))
+                    {
+                        createCmd.ExecuteNonQuery();
+                    }
+
+                    // Add message
+                    string insertMessage = $@"
+                INSERT INTO {tableName} (senderId, messageDate, messageContent) 
+                VALUES (@senderId, @date, @content)";
+                    using (var cmd = new SQLiteCommand(insertMessage, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@senderId", message.SenderId);
+                        cmd.Parameters.AddWithValue("@date", message.Timestamp);
+                        cmd.Parameters.AddWithValue("@content", message.Content);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving message to local DB: {ex.Message}");
+            }
+        }
+
+        public async void sendMessage()
         {
             if (activeContactId == null) return;
 
@@ -410,11 +718,21 @@ namespace MSGG
                     VALUES (@senderId, @date, @content)";
                         using (var cmd = new SQLiteCommand(insertMessage, conn))
                         {
-                            cmd.Parameters.AddWithValue("@senderId", 0); // 0 = biz
+                            cmd.Parameters.AddWithValue("@senderId", myId); // 0 = biz
                             cmd.Parameters.AddWithValue("@date", DateTime.Now);
                             cmd.Parameters.AddWithValue("@content", newMessage);
                             cmd.ExecuteNonQuery();
                         }
+                    }
+
+                    try
+                    {
+                        await firebaseHelper.SendMessageAsync(myId, (int)activeContactId, newMessage);
+                    }
+                    catch (Exception fbEx)
+                    {
+                        // If Firebase fails, we still have the local copy
+                        Console.WriteLine($"Firebase message sync failed: {fbEx.Message}");
                     }
 
                     messageInput.Text = "";
@@ -464,6 +782,9 @@ namespace MSGG
             return bubble;
         }
 
-
+        private void MainMenu_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            messageSubscription?.Dispose();
+        }
     }
 }

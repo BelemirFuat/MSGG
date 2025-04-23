@@ -49,6 +49,8 @@ namespace MSGG
 
         private async void MainMenu_Load(object sender, EventArgs e)
         {
+            createApperanceSettings();
+
             pullFromFireBase();
             checkMyData();
             InitializeContactsDatabase();
@@ -65,6 +67,11 @@ namespace MSGG
             };
             onlineStatusTimer.Start();
 
+
+            LoadContacts();
+        }
+        public void createApperanceSettings()
+        {
             this.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             //this.FormBorderStyle = FormBorderStyle.None; 
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -167,7 +174,9 @@ namespace MSGG
             };
             messagePanel.Controls.Add(messagesFlowPanel);
 
-            LoadContacts();
+            label1.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+            label1.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
+            label1.Font = new Font("Arial", 12);
         }
 
         private async Task CheckContactsOnlineStatus()
@@ -199,14 +208,14 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error checking online status: {ex.Message}");
+                Console.WriteLine($"Error checking online status Line 206: {ex.Message}");
             }
         }
 
         void InitializeMessagesDatabase()
         {
             string msgPath = messagesDbPath;
-            using (SQLiteConnection conn = new SQLiteConnection($"Data Source={msgPath};Version=3;"))
+            using (SQLiteConnection conn = new SQLiteConnection(msgPath))
             {
                 conn.Open();
                 // No need to create specific message tables here,
@@ -235,11 +244,13 @@ namespace MSGG
 
                     // Check for any cloud contacts not in local DB
                     await SyncCloudContactsToLocal();
+
+                    label1.Text = myId.ToString();
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Firebase sync error: {ex.Message}");
+                Console.WriteLine($"Firebase sync error Line 246: {ex.Message}");
                 // Continue without Firebase
             }
         }
@@ -271,7 +282,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error retrieving local contacts: {ex.Message}");
+                MessageBox.Show($"Error retrieving local contacts Line 278: {ex.Message}");
             }
 
             return contacts;
@@ -322,7 +333,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error syncing cloud contacts: {ex.Message}");
+                Console.WriteLine($"Error syncing cloud contacts Line 329: {ex.Message}");
             }
         }
 
@@ -346,6 +357,8 @@ namespace MSGG
                         {
                             myId = Convert.ToInt32(result);
                             Console.WriteLine($"My ID is: {myId}");
+                            label1.Text = myId.ToString();
+
                         }
                         else
                         {
@@ -356,7 +369,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"cntcs databasesinde sorun var! : {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"cntcs databasesinde sorun var! Line 363: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -381,10 +394,12 @@ namespace MSGG
                 myId = newUserId; // Assign to your variable
                 await RegisterUserAsync(AskUserName(), newUserId); // Or use a real name if you have one
                 MessageBox.Show($"Yeni ID alındı: {newUserId}", "Başarılı", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                label1.Text = myId.ToString();
+
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Yeni ID alınırken hata oluştu:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Yeni ID alınırken hata oluştu Line 391:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -400,7 +415,7 @@ namespace MSGG
 
         public async Task<int> GetNewUserIdAsync()
         {
-            FirestoreDb db = FirestoreDb.Create("your-project-id");
+            FirestoreDb db = FirestoreDb.Create("msgg-9424f");
             CollectionReference usersRef = db.Collection("users");
 
             QuerySnapshot snapshot = await usersRef.GetSnapshotAsync();
@@ -422,7 +437,7 @@ namespace MSGG
         }
         public async Task RegisterUserAsync(string userName, int userId)
         {
-            DocumentReference docRef = FirestoreDb.Create("your-project-id").Collection("users").Document(userId.ToString());
+            DocumentReference docRef = FirestoreDb.Create("msgg-9424fd").Collection("users").Document(userId.ToString());
 
             Dictionary<string, object> data = new Dictionary<string, object>
             {
@@ -466,7 +481,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error adding contact: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Error adding contact: Line 473 {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -537,7 +552,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Kişiler yüklenirken bir hata oluştu:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Kişiler yüklenirken bir hata oluştu Line 544:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -568,7 +583,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Kişi ismi yüklenirken bir hata oluştu:\n" + ex.Message);
+                MessageBox.Show("Kişi ismi yüklenirken bir hata oluştu Line 575:\n" + ex.Message);
             }
 
             Label titleLabel = new Label();
@@ -618,7 +633,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Mesajlar yüklenirken bir hata oluştu:\n" + ex.Message);
+                MessageBox.Show("Mesajlar yüklenirken bir hata oluştu Line 625:\n" + ex.Message);
             }
 
             messageSubscription = firebaseHelper.SubscribeToMessages(myId, contactId, newMessage =>
@@ -680,7 +695,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error saving message to local DB: {ex.Message}");
+                Console.WriteLine($"Error saving message to local DB Line 687: {ex.Message}");
             }
         }
 
@@ -732,7 +747,7 @@ namespace MSGG
                     catch (Exception fbEx)
                     {
                         // If Firebase fails, we still have the local copy
-                        Console.WriteLine($"Firebase message sync failed: {fbEx.Message}");
+                        Console.WriteLine($"Firebase message sync failed Line 739: {fbEx.Message}");
                     }
 
                     messageInput.Text = "";
@@ -741,7 +756,7 @@ namespace MSGG
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Mesaj gönderilirken bir hata oluştu:\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Mesaj gönderilirken bir hata oluştu: Line 748\n{ex.Message}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 

@@ -25,6 +25,9 @@
     <None Update="msg.db">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Update="msgg-9424f-firebase-adminsdk-fbsvc-d94785ffb2.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

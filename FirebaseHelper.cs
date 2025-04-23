@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Firebase.Database;
 using Firebase.Database.Query;
 using System.Diagnostics;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
 
 namespace MSGG
 {
@@ -16,13 +18,18 @@ namespace MSGG
 
         public FirebaseHelper()
         {
+            string credentialPath = Path.Combine(Application.StartupPath, "msgg-9424f-firebase-adminsdk-fbsvc-d94785ffb2.json");
+            Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", credentialPath);
+
             try
             {
                 firebase = new FirebaseClient(DatabaseUrl,
-                    new FirebaseOptions
-                    {
-                        AuthTokenAsyncFactory = () => Task.FromResult("YOUR_AUTH_TOKEN_HERE") // Replace with actual auth or remove if using anonymous access
-                    });
+                    new FirebaseOptions());
+                FirebaseApp.Create(new AppOptions()
+                {
+                    Credential = GoogleCredential.FromFile(credentialPath)
+                });
+
             }
             catch (Exception ex)
             {

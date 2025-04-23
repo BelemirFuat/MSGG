@@ -32,18 +32,18 @@
 
         private void MainMenu_Load(object sender, EventArgs e)
         {
-            this.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor); 
+            this.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             //this.FormBorderStyle = FormBorderStyle.None; 
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Size = new Size(1000, 600);
 
             panelContacts.Size = new Size(250, this.Height);
-            panelContacts.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor); 
+            panelContacts.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
             this.Controls.Add(panelContacts);
 
 
-            panelChat.Width = this.Width - panelContacts.Width-35;
-            panelChat.Height = this.Height-25;
+            panelChat.Width = this.Width - panelContacts.Width - 35;
+            panelChat.Height = this.Height - 25;
             panelChat.Location = new Point(panelContacts.Width + 10, 10);
             panelChat.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             this.Controls.Add(panelChat);
@@ -94,7 +94,7 @@
             searchBox.Location = new Point(10, 10);
             searchBox.Margin = new Padding(0, 5, 0, 5);  // Her buton arasında boşluk
 
-            searchBox.ForeColor = ColorTranslator.FromHtml(LavenderTextColor); 
+            searchBox.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
             searchBox.BackColor = ColorTranslator.FromHtml(PrimaryBackgroundColor);
             searchBox.BorderStyle = BorderStyle.FixedSingle;
             searchBox.PlaceholderText = "Ara...";
@@ -157,7 +157,7 @@
 
             messagesFlowPanel.Location = new Point(0, titleLabel.Height);
             messagesFlowPanel.Width = messagePanel.Width; // Panel genişliğine göre ayar
-            messagesFlowPanel.Height = messagePanel.Height -60 ; // Başlık ve alt boşluk için ayar
+            messagesFlowPanel.Height = messagePanel.Height - 60; // Başlık ve alt boşluk için ayar
 
             messagesFlowPanel.AutoScroll = true;
             messagePanel.Controls.Add(messagesFlowPanel);

@@ -100,23 +100,18 @@ namespace MSGG
         }
 
         // Message methods
-        public async Task SendMessageAsync(int senderId, int receiverId, string content)
+        public async Task SendMessageAsync(int senderId, int receiverId, Message message)
         {
             try
             {
                 string chatId = GetChatId(senderId, receiverId);
-                var message = new Message
-                {
-                    SenderId = senderId,
-                    Timestamp = DateTime.UtcNow,
-                    Content = content
-                };
 
                 await firebase
                     .Child("chats")
                     .Child(chatId)
                     .Child("messages")
-                    .PostAsync(message);
+                    .Child(message.Id)  // Ensure it's stored by ID
+                    .PutAsync(message); // Use PutAsync so same message isn't duplicated
 
                 // Update last activity for both users
                 await UpdateUserLastActiveAsync(senderId);
@@ -128,6 +123,7 @@ namespace MSGG
                 throw;
             }
         }
+
 
         public async Task<List<Message>> GetMessagesAsync(int user1Id, int user2Id)
         {
@@ -246,5 +242,16 @@ namespace MSGG
         public int SenderId { get; set; }
         public DateTime Timestamp { get; set; }
         public string Content { get; set; }
+
+        public Message(string id, int senderId, DateTime timestamp, string content)
+        {
+            Id = id;
+            SenderId = senderId;
+            Timestamp = timestamp;
+            Content = content;
+        }
+
+        public Message() { }
+
     }
 }

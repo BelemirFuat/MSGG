@@ -1,7 +1,9 @@
 ﻿using System.Data.SQLite;
+using System.Text;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Google.Cloud.Firestore;
+using Google.Protobuf.WellKnownTypes;
 
 
 
@@ -13,6 +15,7 @@ namespace MSGG
         string PrimaryBackgroundColor = "#1E1E2E";
         string SecondaryBackgroundColor = "#313244";
         string LavenderTextColor = "#CDD6F4";
+        string secondaryTextColor = "#f5e0dc";
 
 
         // element definitions
@@ -442,7 +445,7 @@ namespace MSGG
             Dictionary<string, object> data = new Dictionary<string, object>
             {
                 { "name", userName },
-                { "createdAt", Timestamp.GetCurrentTimestamp() }
+                { "createdAt", Google.Cloud.Firestore.Timestamp.GetCurrentTimestamp() }
             };
 
             await docRef.SetAsync(data);
@@ -558,43 +561,56 @@ namespace MSGG
 
         private void LoadMessages(int contactId, Panel messagePanel)
         {
+            InitializeUIComponents();
+
+            string contactName = GetContactName(contactId);
+            SetupMessagePanelHeader(messagePanel, contactName);
+
+            LoadMessagesFromDatabase(contactId);
+            ScrollToLastMessage();
+
+            SubscribeToFirebaseMessages(contactId);
+        }
+
+        // Initialize UI components and clear existing elements
+        private void InitializeUIComponents()
+        {
             messagePanel.Controls.Clear();
             messagesFlowPanel.Controls.Clear();
-
             messageSubscription?.Dispose();
+        }
 
-            string contactName = "Bilinmeyen";
-
-            // Kişi ismini cntcs veritabanından çek
+        private string GetContactName(int contactId)
+        {
             try
             {
-                using (SQLiteConnection cntcsConn = new SQLiteConnection(contactsDbPath))
+                using (var conn = new SQLiteConnection(contactsDbPath))
                 {
-                    cntcsConn.Open();
-                    string nameQuery = "SELECT name FROM contacts WHERE id = @id";
-                    using (SQLiteCommand cmd = new SQLiteCommand(nameQuery, cntcsConn))
-                    {
-                        cmd.Parameters.AddWithValue("@id", contactId);
-                        object result = cmd.ExecuteScalar();
-                        if (result != null)
-                            contactName = result.ToString();
-                    }
+                    conn.Open();
+                    var cmd = new SQLiteCommand("SELECT name FROM contacts WHERE id = @id", conn);
+                    cmd.Parameters.AddWithValue("@id", contactId);
+                    object result = cmd.ExecuteScalar();
+                    return result?.ToString() ?? "Bilinmeyen";
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                MessageBox.Show("Kişi ismi yüklenirken bir hata oluştu Line 575:\n" + ex.Message);
+                return "Bilinmeyen";
             }
+        }
 
-            Label titleLabel = new Label();
-            titleLabel.Text = contactName;
-            titleLabel.ForeColor = ColorTranslator.FromHtml(LavenderTextColor);
-            titleLabel.Font = new Font("Arial", 26, FontStyle.Bold);
-            titleLabel.AutoSize = true;
-            titleLabel.Location = new Point(10, 10);
-            titleLabel.Width = messagePanel.Width - 40;
-            titleLabel.Padding = new Padding(15);
-            titleLabel.BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor);
+        private void SetupMessagePanelHeader(Panel messagePanel, string contactName)
+        {
+            var titleLabel = new Label
+            {
+                Text = contactName,
+                ForeColor = ColorTranslator.FromHtml(LavenderTextColor),
+                Font = new Font("Arial", 26, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(10, 10),
+                Padding = new Padding(15),
+                BackColor = ColorTranslator.FromHtml(SecondaryBackgroundColor)
+            };
             messagePanel.Controls.Add(titleLabel);
 
             messagesFlowPanel.Location = new Point(0, titleLabel.Bottom);
@@ -602,62 +618,99 @@ namespace MSGG
             messagesFlowPanel.Height = messagePanel.Height - titleLabel.Height - 20;
             messagesFlowPanel.AutoScroll = true;
             messagePanel.Controls.Add(messagesFlowPanel);
+        }
 
+        private void LoadMessagesFromDatabase(int contactId)
+        {
             string tableName = $"messages_ID_{contactId}";
+            DateTime? lastMessageDate = null;
 
             try
             {
-                using (SQLiteConnection conn = new SQLiteConnection(messagesDbPath))
+                using (var conn = new SQLiteConnection(messagesDbPath))
                 {
                     conn.Open();
-                    string query = $"CREATE TABLE IF NOT EXISTS {tableName} (" +
-                                   "senderId INT, " +
-                                   "messageDate DATETIME, " +
-                                   "messageContent VARCHAR(256))";
-                    new SQLiteCommand(query, conn).ExecuteNonQuery();
+                    new SQLiteCommand($@"
+                CREATE TABLE IF NOT EXISTS {tableName} (
+                     messageId TEXT PRIMARY KEY,
 
-                    string selectQuery = $"SELECT * FROM {tableName} ORDER BY messageDate";
-                    using (SQLiteCommand cmd = new SQLiteCommand(selectQuery, conn))
-                    using (SQLiteDataReader reader = cmd.ExecuteReader())
+                    senderId INT,
+                    messageDate DATETIME,
+                    messageContent VARCHAR(256))", conn).ExecuteNonQuery();
+
+                    var cmd = new SQLiteCommand($"SELECT * FROM {tableName} ORDER BY messageDate", conn);
+                    using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
                         {
                             int senderId = reader.GetInt32(0);
-                            string msg = reader.GetString(2);
-                            bool isSentByMe = senderId == myId;
-                            Panel bubble = CreateMessageBubble(msg, isSentByMe);
-                            messagesFlowPanel.Controls.Add(bubble);
+                            DateTime msgTime = DateTime.Parse(reader.GetString(1));
+                            string content = reader.GetString(2);
+
+                            AddMessageToUI(content, senderId == myId, msgTime, ref lastMessageDate);
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Mesajlar yüklenirken bir hata oluştu Line 625:\n" + ex.Message);
+                MessageBox.Show("Mesajlar yüklenirken hata oluştu:\n" + ex.Message);
             }
+        }
 
+        private void SubscribeToFirebaseMessages(int contactId)
+        {
+            HashSet<string> seen = new HashSet<string>();
             messageSubscription = firebaseHelper.SubscribeToMessages(myId, contactId, newMessage =>
             {
-                // This runs when we receive a new message from Firebase
                 this.Invoke((MethodInvoker)delegate
                 {
-                    // Only add message if it's not from us (to avoid duplicates)
-                    if (newMessage.SenderId != myId)
-                    {
-                        // Save to local database
-                        SaveMessageToLocal(contactId, newMessage);
+                    string hash = $"{newMessage.SenderId}_{newMessage.Timestamp.Ticks}_{newMessage.Content}";
+                    if (seen.Contains(hash)) return;
 
-                        // Add to UI
-                        bool isSentByMe = newMessage.SenderId == myId;
-                        Panel bubble = CreateMessageBubble(newMessage.Content, isSentByMe);
-                        messagesFlowPanel.Controls.Add(bubble);
+                    seen.Add(hash);
+                    SaveMessageToLocal(contactId, newMessage);
 
-                        // Scroll to bottom
-                        messagesFlowPanel.ScrollControlIntoView(bubble);
-                    }
+                    DateTime? lastDate = messagesFlowPanel.Controls
+                        .OfType<Label>()
+                        .Where(l => l.Font.Bold)
+                        .Select(l => DateTime.TryParse(l.Text, out var dt) ? dt : (DateTime?)null)
+                        .LastOrDefault();
+
+                    AddMessageToUI(newMessage.Content, newMessage.SenderId == myId, newMessage.Timestamp, ref lastDate);
+                    ScrollToLastMessage();
                 });
             });
         }
+
+        private void AddMessageToUI(string content, bool isSentByMe, DateTime timestamp, ref DateTime? lastMessageDate)
+        {
+            if (lastMessageDate == null || lastMessageDate.Value.Date != timestamp.Date)
+            {
+                messagesFlowPanel.Controls.Add(new Label
+                {
+                    Text = GetFriendlyDate(timestamp),
+                    AutoSize = true,
+                    Font = new Font("Arial", 12, FontStyle.Bold),
+                    ForeColor = ColorTranslator.FromHtml(secondaryTextColor),
+                    Padding = new Padding(10),
+                    TextAlign = ContentAlignment.MiddleCenter
+                });
+                lastMessageDate = timestamp;
+            }
+
+            var bubble = CreateMessageBubble(content, isSentByMe, timestamp);
+            messagesFlowPanel.Controls.Add(bubble);
+        }
+
+        private void ScrollToLastMessage()
+        {
+            if (messagesFlowPanel.Controls.Count > 0)
+            {
+                messagesFlowPanel.ScrollControlIntoView(messagesFlowPanel.Controls[^1]);
+            }
+        }
+
 
         private void SaveMessageToLocal(int contactId, Message message)
         {
@@ -668,27 +721,29 @@ namespace MSGG
                     conn.Open();
                     string tableName = $"messages_ID_{contactId}";
 
-                    // Create table if it doesn't exist
+                    // Create table with messageId as primary key
                     string createTableQuery = $@"
-                CREATE TABLE IF NOT EXISTS {tableName} (
-                    senderId INT,
-                    messageDate DATETIME,
-                    messageContent VARCHAR(256)
-                )";
+            CREATE TABLE IF NOT EXISTS {tableName} (
+                messageId TEXT PRIMARY KEY,
+                senderId INT,
+                messageDate DATETIME,
+                messageContent VARCHAR(256)
+            )";
                     using (var createCmd = new SQLiteCommand(createTableQuery, conn))
                     {
                         createCmd.ExecuteNonQuery();
                     }
 
-                    // Add message
+                    // Insert message (avoid duplicates with messageId)
                     string insertMessage = $@"
-                INSERT INTO {tableName} (senderId, messageDate, messageContent) 
-                VALUES (@senderId, @date, @content)";
+            INSERT OR IGNORE INTO {tableName} (senderId, messageDate, messageContent, messageId) 
+            VALUES (@senderId, @date, @content, @id)";
                     using (var cmd = new SQLiteCommand(insertMessage, conn))
                     {
                         cmd.Parameters.AddWithValue("@senderId", message.SenderId);
                         cmd.Parameters.AddWithValue("@date", message.Timestamp);
                         cmd.Parameters.AddWithValue("@content", message.Content);
+                        cmd.Parameters.AddWithValue("@id", message.Id);
                         cmd.ExecuteNonQuery();
                     }
                 }
@@ -699,6 +754,7 @@ namespace MSGG
             }
         }
 
+
         public async void sendMessage()
         {
             if (activeContactId == null) return;
@@ -708,33 +764,33 @@ namespace MSGG
                 string newMessage = messageInput.Text.Trim();
                 if (!string.IsNullOrEmpty(newMessage))
                 {
+                    DateTime timestamp = DateTime.UtcNow;
+                    string messageId = GenerateMessageId(myId, timestamp, newMessage);
+
                     using (var conn = new SQLiteConnection(messagesDbPath))
                     {
                         conn.Open();
 
-                        // Dinamik tablo ismi
                         string tableName = $"messages_ID_{activeContactId}";
 
-                        // Tabloyu yoksa oluştur
                         string createTableQuery = $@"
                     CREATE TABLE IF NOT EXISTS {tableName} (
+                        messageId TEXT PRIMARY KEY,
                         senderId INT,
                         messageDate DATETIME,
                         messageContent VARCHAR(256)
                     )";
                         using (var createCmd = new SQLiteCommand(createTableQuery, conn))
-                        {
                             createCmd.ExecuteNonQuery();
-                        }
 
-                        // Mesajı ekle
                         string insertMessage = $@"
-                    INSERT INTO {tableName} (senderId, messageDate, messageContent) 
-                    VALUES (@senderId, @date, @content)";
+                    INSERT OR IGNORE INTO {tableName} (messageId, senderId, messageDate, messageContent)
+                    VALUES (@id, @senderId, @date, @content)";
                         using (var cmd = new SQLiteCommand(insertMessage, conn))
                         {
-                            cmd.Parameters.AddWithValue("@senderId", myId); // 0 = biz
-                            cmd.Parameters.AddWithValue("@date", DateTime.Now);
+                            cmd.Parameters.AddWithValue("@id", messageId);
+                            cmd.Parameters.AddWithValue("@senderId", myId);
+                            cmd.Parameters.AddWithValue("@date", timestamp);
                             cmd.Parameters.AddWithValue("@content", newMessage);
                             cmd.ExecuteNonQuery();
                         }
@@ -742,16 +798,23 @@ namespace MSGG
 
                     try
                     {
-                        await firebaseHelper.SendMessageAsync(myId, (int)activeContactId, newMessage);
+                        Message firebaseMessage = new Message
+                        (
+                           messageId,
+                           myId,
+                           timestamp,
+                           newMessage
+                        );
+
+                        await firebaseHelper.SendMessageAsync(myId, (int)activeContactId, firebaseMessage);
                     }
                     catch (Exception fbEx)
                     {
-                        // If Firebase fails, we still have the local copy
                         Console.WriteLine($"Firebase message sync failed Line 739: {fbEx.Message}");
                     }
 
                     messageInput.Text = "";
-                    LoadMessages((int)activeContactId, messagePanel); // Güncelle
+                    LoadMessages((int)activeContactId, messagePanel);
                 }
             }
             catch (Exception ex)
@@ -761,7 +824,19 @@ namespace MSGG
         }
 
 
-        private Panel CreateMessageBubble(string text, bool isSentByMe)
+        private string GenerateMessageId(int senderId, DateTime timestamp, string content)
+        {
+            string input = $"{senderId}_{timestamp.Ticks}_{content}";
+            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
+                return BitConverter.ToString(hash).Replace("-", "").ToLower(); // compact string
+            }
+        }
+
+
+
+        private Panel CreateMessageBubble(string text, bool isSentByMe, DateTime timestamp)
         {
             Label messageLabel = new Label
             {
@@ -775,6 +850,23 @@ namespace MSGG
                 TextAlign = ContentAlignment.MiddleLeft,
             };
 
+            Label timestampLabel = new Label
+            {
+                Text = timestamp.ToString("HH:mm"), // Only show time, like "14:32"
+                AutoSize = true,
+                Font = new Font("Arial", 10, FontStyle.Italic),
+                ForeColor = ColorTranslator.FromHtml(secondaryTextColor),
+                Margin = new Padding(5, 0, 0, 0),
+            };
+
+            FlowLayoutPanel messageContent = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.TopDown,
+                AutoSize = true,
+                BackColor = Color.Transparent,
+                Padding = new Padding(0),
+            };
+
             Panel bubble = new Panel
             {
                 AutoSize = true,
@@ -782,7 +874,10 @@ namespace MSGG
                 Margin = new Padding(10),
                 Padding = new Padding(0),
             };
-            bubble.Controls.Add(messageLabel);
+
+            messageContent.Controls.Add(messageLabel);
+            messageContent.Controls.Add(timestampLabel);
+            bubble.Controls.Add(messageContent);
 
             // Mesajı sağa ya da sola yasla
             if (isSentByMe)
@@ -796,6 +891,16 @@ namespace MSGG
 
             return bubble;
         }
+        private string GetFriendlyDate(DateTime date)
+        {
+            if (date.Date == DateTime.Today)
+                return "Today";
+            else if (date.Date == DateTime.Today.AddDays(-1))
+                return "Yesterday";
+            else
+                return date.ToString("MMMM dd, yyyy"); // Example: April 26, 2025
+        }
+
 
         private void MainMenu_FormClosing(object sender, FormClosingEventArgs e)
         {
